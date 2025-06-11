@@ -1,0 +1,119 @@
+GNU Health
+Query Examples Documentation
+
+A continuación, se detallarán ejemplos de reportes que pueden solicitar los usuarios y el tipo de queries que se espera. Para ello también se describirán las tablas y sus atributos.
+
+Ejemplo 1
+User: Conteo de los casos de dengue por semana desde agosto del 2024 hasta enero del 2025.
+Response:
+sql: "SELECT 
+    EXTRACT(YEAR FROM lab.create_date) AS Año,
+    EXTRACT(WEEK FROM lab.create_date) AS SemanaEpidemiologica,
+    COUNT(*) AS TotalCasos
+FROM
+    public.gnuhealth_lab AS lab
+WHERE
+    lab.serializer LIKE '%Positivo%'
+        AND lab.serializer LIKE '%Dengue%'
+        AND lab.date_analysis BETWEEN '2024-08-01' AND '2025-01-31'
+GROUP BY Año , SemanaEpidemiologica
+ORDER BY Año , SemanaEpidemiologica ASC;”
+
+Related Tables:
+ 
+Ejemplo 2
+User: Lista de los exámenes de laboratorio ordenados por cantidad de resultados anormales.
+Response:
+sql: “SELECT
+    DATE_TRUNC('month', lab.date_analysis) AS mes,
+    test_type.name AS nombre_examen,
+    COUNT(DISTINCT lab.patient) AS total_pacientes_anormales
+FROM 
+    gnuhealth_lab AS lab
+INNER JOIN 
+    gnuhealth_lab_test_critearea AS criteria
+ON 
+    lab.id = criteria.gnuhealth_lab_id
+INNER JOIN 
+    gnuhealth_lab_test_type AS test_type 
+ON 
+    lab.test = test_type.id
+WHERE 
+    lab.date_analysis BETWEEN '2024-08-01' AND '2025-01-31'  
+    AND (
+        (criteria.result IS NOT NULL AND criteria.result >= criteria.lower_limit AND criteria.result <= criteria.upper_limit)
+        OR
+        (criteria.result IS NULL AND criteria.result_text ~ '^[0-9]+(\.[0-9]+)?$' AND criteria.result_text::DOUBLE PRECISION >= criteria.lower_limit AND criteria.result_text::DOUBLE PRECISION <= criteria.upper_limit)
+    )
+GROUP BY 
+    mes, test_type.name
+ORDER BY 
+    mes ASC, total_pacientes_anormales DESC;”
+
+Realated Tables:
+gnuhealth_lab
+gnuhealth_lab_test_critearea
+gnuhealth_lab_test_type
+ 
+Ejemplo 3:
+User: Lista de pacientes con diabetes y su estado de control.
+Response:
+sql: “SELECT 
+ d.name AS patient_id,
+    CASE 
+        WHEN lab.serializer IS NULL THEN 'Sin control' 
+        ELSE lab.serializer 
+    END AS casos_en_control
+FROM gnuhealth_patient AS p
+INNER JOIN gnuhealth_patient_disease AS d ON p.name = d.name
+INNER JOIN gnuhealth_pathology AS pathology ON d.pathology = pathology.id
+LEFT JOIN gnuhealth_lab AS lab ON p.name = lab.patient 
+    AND lower(lab.serializer) LIKE '%glucosa%'  and lower(lab.serializer) LIKE '%HP%'
+WHERE lower(pathology.name) LIKE '%diabetes%'
+ORDER BY d.name;”
+
+Related Tables:
+gnuhealth_patient
+gnuhealth_patient_disease
+gnuhealth_pathology
+gnuhealth_lab
+ 
+Ejemplo 4:
+User: Conteo de casos de VIH filtrados por mes, año y género.
+Response:
+sql: “SELECT 
+    EXTRACT(YEAR FROM l.date_analysis) AS año,
+    TO_CHAR(l.date_analysis, 'Month') AS mes,
+    p.gender AS genero,
+    COUNT(l.id) AS total_casos_VIH
+FROM public.gnuhealth_lab AS l
+INNER JOIN public.gnuhealth_patient AS gp ON l.patient = gp.id
+INNER JOIN public.party_party AS p ON gp.name = p.id
+WHERE l.serializer LIKE '%Positivo%'
+AND l.serializer LIKE '%VIH%'
+AND l.date_analysis BETWEEN '2024-08-01' AND '2025-01-31'
+GROUP BY año, mes, p.gender
+ORDER BY año DESC, mes, total_casos_VIH DESC;”
+
+Related Tables:
+gnuhealth_lab
+gnuhealth_patient 
+party_party
+ 
+Ejemplo 5:
+User: Lista de pacientes con más de un diagnóstico y su cantidad.
+Response:
+sql: “SELECT 
+    p.name AS patient_id,
+    COUNT(d.pathology) AS numero_de_diagnosticos
+FROM gnuhealth_patient AS p
+INNER JOIN gnuhealth_patient_disease AS d ON p.name = d.name
+INNER JOIN gnuhealth_pathology AS pathology ON d.pathology = pathology.id
+GROUP BY p.name
+HAVING COUNT(d.pathology) > 1
+ORDER BY numero_de_diagnosticos DESC;”
+
+Related Tables:
+gnuhealth_pathology
+gnuhealth_patient_disease
+gnuhealth_patient
